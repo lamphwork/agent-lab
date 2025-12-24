@@ -26,7 +26,7 @@ public class CliApp {
                 ""
         );
 
-        String apiKey =  System.getProperty("OPEN_AI_KEY");
+        String apiKey =  System.getenv("OPEN_AI_KEY");
         LLMClient llm = new OpenAI(apiKey, "gpt-4o-mini", "text-embedding-3-small");
 
         ContextLoader contextLoader = new InMemContextLoader();
@@ -41,6 +41,11 @@ public class CliApp {
         while (true) {
             logger.info("Type some thing: ");
             String input = scanner.nextLine();
+
+            if (input.equals("/exit")) {
+                break;
+            }
+
             orchestrator.process(agent, new AgentInput(contextId, input), output -> {
                 logger.info("[{}] {}", output.getType(), output.getContent());
             });

@@ -19,9 +19,7 @@ public class ResponserNode implements ExecuteNode {
     public Context execute(Context context, AgentCallback callback) {
         String lastUserInput = context.getLastUserReply();
 
-        List<LLMMessage> messages = List.of(
-                new LLMMessage("user", lastUserInput, null)
-        );
+        List<LLMMessage> messages = List.of(LLMMessage.userMessage(lastUserInput, null));
 
         LLMMessage output = llmClient.generate(messages);
         String answer = output.content();

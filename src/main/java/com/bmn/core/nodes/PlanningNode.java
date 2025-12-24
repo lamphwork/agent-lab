@@ -1,5 +1,6 @@
 package com.bmn.core.nodes;
 
+import com.bmn.core.model.AgentOutput;
 import com.bmn.core.model.Context;
 import com.bmn.core.model.LLMMessage;
 import com.bmn.core.model.TaskStep;
@@ -25,6 +26,7 @@ public class PlanningNode implements ExecuteNode {
 
     @Override
     public Context execute(Context context, AgentCallback callback) {
+        callback.next(AgentOutput.hintMessage("Planning started"));
         List<LLMMessage> messages = getLlmMessages();
 
         LLMMessage output = llm.generate(messages);
@@ -50,6 +52,8 @@ public class PlanningNode implements ExecuteNode {
 
             context.setCurrentStepIndex(0);
             context.setPlan(steps);
+
+            callback.next(AgentOutput.hintMessage("Planning finished: " + steps));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("can not read planner response", e);
         }
@@ -64,7 +68,7 @@ public class PlanningNode implements ExecuteNode {
         Nhiệm vụ:
         - Phân rã yêu cầu của người dùng thành các bước THỰC THI ĐƯỢC bởi AI agent.
         - KHÔNG đưa ra các bước quản lý dự án chung chung (như họp, thu thập yêu cầu, quản lý team).
-        - Mỗi step phải có thể được executor xử lý trực tiếp (thiết kế, phân tích, viết code, đề xuất kiến trúc, ...).
+        - Mỗi step phải có thể được AI xử lý trực tiếp (thiết kế, phân tích, viết code, đề xuất kiến trúc, ...).
         
         Output:
         - Chỉ trả về JSON thuần (raw JSON).
@@ -89,8 +93,6 @@ public class PlanningNode implements ExecuteNode {
         - Không thêm text ngoài JSON.
         """;
 
-        return List.of(
-                new LLMMessage("system", prompt, null)
-        );
+        return List.of(new LLMMessage("system", prompt, null));
     }
 }
