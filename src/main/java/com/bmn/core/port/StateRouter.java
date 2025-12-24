@@ -1,0 +1,10 @@
+package com.bmn.core.port;
+
+import com.bmn.core.model.Context;
+
+@FunctionalInterface
+public interface StateRouter {
+
+    Context.State route(Context context);
+
+}
