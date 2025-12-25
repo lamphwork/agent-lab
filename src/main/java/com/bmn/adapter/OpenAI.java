@@ -1,11 +1,13 @@
 package com.bmn.adapter;
 
 import com.bmn.core.model.LLMMessage;
+import com.bmn.core.model.ToolInfo;
 import com.bmn.core.port.LLMClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.util.RawValue;
 import lombok.RequiredArgsConstructor;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -13,6 +15,7 @@ import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -33,34 +36,84 @@ public class OpenAI implements LLMClient {
     // generate()
     // -----------------------------
     @Override
-    public LLMMessage generate(List<LLMMessage> messages) {
+    public List<LLMMessage> generate(List<LLMMessage> messages) {
         try (CloseableHttpClient client = HttpClients.createDefault()) {
 
             HttpPost post = new HttpPost(CHAT_ENDPOINT);
             post.setHeader("Authorization", "Bearer " + apiKey);
             post.setHeader("Content-Type", "application/json");
 
-            JsonNode request = mapper.createObjectNode()
+            ObjectNode request = mapper.createObjectNode()
+                    .objectNode()
                     .put("model", chatModel)
                     .set("messages", adaptOpenAIMessage(messages));
 
+            String fakeTool = """
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "writeFile",
+                            "description": "Ghi vào file mới",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "location": {
+                                        "type": "string",
+                                        "description": "Vị trí file "
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "description": "Nội dung file"
+                                    }
+                                },
+                                "required": [
+                                    "location"
+                                ]
+                            }
+                        }
+                    }
+                    """;
+
+            request.set(
+                    "tools",
+                    mapper.createArrayNode().addRawValue(new  RawValue(fakeTool))
+            );
+
             post.setEntity(
-                    new StringEntity(mapper.writeValueAsString(request),
-                            StandardCharsets.UTF_8)
+                    new StringEntity(mapper.writeValueAsString(request), StandardCharsets.UTF_8)
             );
 
             JsonNode response = client.execute(post,
                     httpResponse -> mapper.readTree(httpResponse.getEntity().getContent())
             );
+            System.out.println(response.toString());
 
-            JsonNode message =
-                    response.at("/choices/0/message");
+            List<LLMMessage> result = new ArrayList<>();
+            ArrayNode choices = (ArrayNode) response.get("choices");
+            for (JsonNode choice : choices) {
+                JsonNode message = choice.get("message");
+                String role = message.get("role").asText();
+                String content = message.get("content").asText();
+                ToolInfo toolInfo = null;
 
-            return new LLMMessage(
-                    message.get("role").asText(),
-                    message.get("content").asText(),
-                    null
-            );
+                JsonNode toolCalls = message.get("tool_calls");
+                if (toolCalls != null && toolCalls.isArray()) {
+                    ArrayNode tools = (ArrayNode) toolCalls;
+                    for (JsonNode tool : tools) {
+                        String callId = tool.get("id").asText();
+                        JsonNode function = tool.get("function");
+                        toolInfo = new ToolInfo(
+                                callId,
+                                function.get("name").asText(),
+                                mapper.readTree(function.get("arguments").asText())
+                        );
+                    }
+                }
+
+                result.add(new LLMMessage(role, content, toolInfo));
+            }
+
+            return result;
 
         } catch (Exception e) {
             throw new RuntimeException("OpenAI generate failed", e);
@@ -83,8 +136,7 @@ public class OpenAI implements LLMClient {
                     .put("input", content);
 
             post.setEntity(
-                    new StringEntity(mapper.writeValueAsString(request),
-                            StandardCharsets.UTF_8)
+                    new StringEntity(mapper.writeValueAsString(request), StandardCharsets.UTF_8)
             );
 
             JsonNode response = client.execute(post,

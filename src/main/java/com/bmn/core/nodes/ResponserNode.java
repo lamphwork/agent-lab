@@ -21,12 +21,13 @@ public class ResponserNode implements ExecuteNode {
 
         List<LLMMessage> messages = List.of(LLMMessage.userMessage(lastUserInput, null));
 
-        LLMMessage output = llmClient.generate(messages);
-        String answer = output.content();
+        List<LLMMessage> output = llmClient.generate(messages);
+        for (LLMMessage message : output) {
+            String answer = message.content();
+            callback.next(AgentOutput.textMessage(answer));
+        }
+
         context.setState(Context.State.DONE_GOAL);
-
-        callback.next(AgentOutput.textMessage(answer));
-
         return context;
     }
 }

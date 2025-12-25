@@ -25,12 +25,13 @@ public class GreetingNode implements ExecuteNode {
                 new LLMMessage("system", prompt, null)
         );
 
-        LLMMessage output = llm.generate(messages);
+        List<LLMMessage> output = llm.generate(messages);
 
-
-        context.setPendingQuestion(output.content());
-        context.pauseToAskUser(Context.State.GREETING);
-        callback.next(AgentOutput.textMessage(output.content()));
+        for (LLMMessage message : output) {
+            context.setPendingQuestion(message.content());
+            context.pauseToAskUser(Context.State.GREETING);
+            callback.next(AgentOutput.textMessage(message.content()));
+        }
 
         return context;
     }

@@ -14,4 +14,5 @@ public class TaskStep {
     private String title;
     private String desc;
     private ObjectNode metadata;
+    private String status;
 }

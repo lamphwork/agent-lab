@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface LLMClient {
 
-    LLMMessage generate(List<LLMMessage> messages);
+    List<LLMMessage> generate(List<LLMMessage> messages);
 
     float[] embedding(String content);
 }

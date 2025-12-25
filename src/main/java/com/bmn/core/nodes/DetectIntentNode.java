@@ -11,6 +11,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -22,34 +24,39 @@ public class DetectIntentNode implements ExecuteNode {
 
     @Override
     public Context execute(Context context, AgentCallback callback) {
+        callback.next(AgentOutput.hintMessage("Detect Intent started"));
         String prompt = """
-        Role: Bạn là một intent detector. Công việc của bạn là tương tác với người dùng để phân loại thông tin thành một trong các type sau:
-            - reply: người dùng trả lời câu hỏi trong hội thoại trước đấy
-            - new_task: một đoạn hội thoại mới, không liên quan đến hội thoại trước đấy
-            - cancel: người dùng huỷ công việc hiện tại
+        Role: Bạn là một intent detector. Công việc của bạn là tương tác với người dùng để xác định ý định của người dùng:
+        - reply: Không có yêu cầu cụ thể, user chỉ đơn thuần cung cấp thông tin hoặc trả lời một câu hỏi trước đấy
+        - new_task: Một yêu cầu mới, cần lên kế hoạch lại
+        - cancel: người dùng huỷ công việc hiện tại
+
         Cách phân biệt loại thông tin:
-            - Luôn dựa vào lịch sử trò chuyện để xác định
-            - Nếu là tin nhắn đầu tiên và yêu cầu cụ thể thực hiện việc nào đó -> new_task
-            - Nếu có trò chuyện trước đấy, và thông tin người dùng nhập vào có liên quan, hoặc trả lời câu hỏi trước đấy -> reply
-            - Nếu người nói dừng/ huỷ / cancel hoặc tương tự -> cancel
-        Result format: Bạn sẽ trả về cho tôi loại thông tin dạng json, chỉ có 1 field là intentType
-        Ví dụ: {"intentType": "reply"}
+        - Luôn dựa vào lịch sử trò chuyện để xác định
+        - Nếu có yêu cầu cụ thể cần thực hiện -> new_task
+        - Nếu không có yêu cầu cụ thể, người dùng chỉ đang trả lời và bạn cần làm rõ thêm -> reply
+        - Nếu người nói dừng/ huỷ / cancel hoặc tương tự -> cancel
+        Result format: Bạn sẽ trả về cho tôi loại thông tin dạng json, bao gồm field intentType, content
+        Ví dụ: {"intentType": "reply", "content": "Nội dung phản hồi với người dùng"}
         Lưu ý: Bắt buộc trả về định dạng json
+        
         """;
 
         List<LLMMessage> messages = new LinkedList<>(List.of(new LLMMessage("system", prompt, null)));
         messages.addAll(context.getHistories());
         messages.add(new LLMMessage("user", "Input từ người dùng: " + context.getLastUserReply(), null));
 
-        LLMMessage output = llm.generate(messages);
-
+        List<LLMMessage> output = llm.generate(messages);
         try {
-            JsonNode jsonNode = new ObjectMapper().readTree(output.content());
-            String intentType = jsonNode.get("intentType").asText();
+            for (LLMMessage message : output) {
+                JsonNode jsonNode = new ObjectMapper().readTree(message.content());
+                String intentType = jsonNode.get("intentType").asText();
+                String content = jsonNode.get("content").asText();
 
-            context.setIntent(intentType);
-
-            callback.next(AgentOutput.hintMessage(intentType));
+                context.setIntent(intentType);
+                callback.next(AgentOutput.hintMessage(intentType));
+                callback.next(AgentOutput.textMessage(content));
+            }
 
             return context;
         } catch (JsonProcessingException e) {

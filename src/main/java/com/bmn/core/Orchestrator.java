@@ -16,6 +16,7 @@ public class Orchestrator {
     private final LLMClient llmClient;
     private final ContextLoader contextLoader;
     private final Map<Context.State, ExecuteNode> nodes;
+    private final Map<Context.State, Function<Context, Context.State>> edges;
     private final StateRouter router;
 
     public Orchestrator(LLMClient llmClient, ContextLoader contextLoader, StateRouter stateRouter) {
@@ -24,8 +25,10 @@ public class Orchestrator {
         this.router = stateRouter;
 
         this.nodes = new LinkedHashMap<>();
+        this.edges = new LinkedHashMap<>();
 
         initNodes();
+        initEdges();
     }
 
     private void initNodes() {
@@ -34,6 +37,41 @@ public class Orchestrator {
         nodes.put(Context.State.RESPONDER, new ResponserNode(llmClient));
         nodes.put(Context.State.PLANNING, new PlanningNode(llmClient));
         nodes.put(Context.State.EXECUTE_STEP, new StepExecuteNode(llmClient));
+    }
+
+    private void initEdges() {
+        edges.put(Context.State.INTENT_DETECT, context -> {
+            if ("new_task".equals(context.getIntent())) {
+                return Context.State.PLANNING;
+            }
+            if ("cancel".equals(context.getIntent())) {
+                return Context.State.USER_CANCELED;
+            }
+
+            if (context.getResumState() == Context.State.INTENT_DETECT) {
+                context.pauseToAskUser(Context.State.INTENT_DETECT);
+                return Context.State.PAUSE_ASK_USER;
+            }
+
+            context.resume();
+            return context.getResumState();
+        });
+        edges.put(Context.State.PLANNING, context -> Context.State.EXECUTE_STEP);
+        edges.put(Context.State.EXECUTE_STEP, context -> {
+            TaskStep step = context.getPlan().get(context.getCurrentStepIndex());
+            if ("ask_user".equals(step.getStatus())) {
+                context.pauseToAskUser(Context.State.EXECUTE_STEP);
+                return Context.State.PAUSE_ASK_USER;
+            }
+            if ("done".equals(step.getStatus())) {
+                context.setCurrentStepIndex(context.getCurrentStepIndex() + 1);
+                if (context.getCurrentStepIndex() == context.getPlan().size() - 1) {
+                    return Context.State.DONE_GOAL;
+                }
+            }
+
+            return Context.State.EXECUTE_STEP;
+        });
     }
 
     public void process(Agent agent, AgentInput input, AgentCallback callback) {
@@ -54,7 +92,7 @@ public class Orchestrator {
             }
             context = executor.execute(context, proxiedCb);
 
-            Context.State next = router.route(context);
+            Context.State next = edges.get(context.getState()).apply(context);
             context.setState(next);
 
             contextLoader.save(context);

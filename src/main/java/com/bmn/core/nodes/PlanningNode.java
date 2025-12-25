@@ -27,9 +27,9 @@ public class PlanningNode implements ExecuteNode {
     @Override
     public Context execute(Context context, AgentCallback callback) {
         callback.next(AgentOutput.hintMessage("Planning started"));
-        List<LLMMessage> messages = getLlmMessages();
+        List<LLMMessage> messages = getLlmMessages(context);
 
-        LLMMessage output = llm.generate(messages);
+        LLMMessage output = llm.generate(messages).getFirst();
         List<TaskStep> steps = new LinkedList<>();
 
         try {
@@ -41,11 +41,12 @@ public class PlanningNode implements ExecuteNode {
             ArrayNode arrayNode = (ArrayNode) jsonNode;
             for (int i = 0; i < arrayNode.size(); i++) {
                 ObjectNode objectNode = (ObjectNode) arrayNode.get(i);
-                TaskStep task = new  TaskStep(
+                TaskStep task = new TaskStep(
                         UUID.randomUUID().toString(),
                         objectNode.get("title").asText(),
                         objectNode.get("desc").asText(),
-                        (ObjectNode) objectNode.get("metadata")
+                        (ObjectNode) objectNode.get("metadata"),
+                        "processing"
                 );
                 steps.add(task);
             }
@@ -61,38 +62,41 @@ public class PlanningNode implements ExecuteNode {
         return context;
     }
 
-    private static List<LLMMessage> getLlmMessages() {
+    private static List<LLMMessage> getLlmMessages(Context context) {
         String prompt = """
-        Role: Bạn là một planner cho AI agent.
-        
-        Nhiệm vụ:
-        - Phân rã yêu cầu của người dùng thành các bước THỰC THI ĐƯỢC bởi AI agent.
-        - KHÔNG đưa ra các bước quản lý dự án chung chung (như họp, thu thập yêu cầu, quản lý team).
-        - Mỗi step phải có thể được AI xử lý trực tiếp (thiết kế, phân tích, viết code, đề xuất kiến trúc, ...).
-        
-        Output:
-        - Chỉ trả về JSON thuần (raw JSON).
-        - KHÔNG dùng markdown.
-        - KHÔNG dùng ``` hoặc bất kỳ ký hiệu định dạng nào.
-        - Output phải là một mảng JSON.
-        
-        Schema:
-        [
-          {
-            "title": "short technical action",
-            "desc": "mô tả rõ việc cần làm",
-            "metadata": {
-              "type": "design | analysis | implementation",
-              "dependency": []
-            }
-          }
-        ]
-        
-        Yêu cầu quan trọng:
-        - Không giải thích thêm.
-        - Không thêm text ngoài JSON.
-        """;
+                Role: Bạn là một planner cho AI agent.
+                
+                Nhiệm vụ:
+                - Phân rã yêu cầu của người dùng thành các bước THỰC THI ĐƯỢC bởi AI agent.
+                - KHÔNG đưa ra các bước quản lý dự án chung chung (như họp, thu thập yêu cầu, quản lý team).
+                - Mỗi step phải có thể được AI xử lý trực tiếp (thiết kế, phân tích, viết code, đề xuất kiến trúc, ...).
+                
+                Output:
+                - Chỉ trả về JSON thuần (raw JSON).
+                - KHÔNG dùng markdown.
+                - KHÔNG dùng ``` hoặc bất kỳ ký hiệu định dạng nào.
+                - Output phải là một mảng JSON.
+                
+                Schema:
+                [
+                  {
+                    "title": "short technical action",
+                    "desc": "mô tả rõ việc cần làm",
+                    "metadata": {
+                      "type": "design | analysis | implementation",
+                      "dependency": []
+                    }
+                  }
+                ]
+                
+                Yêu cầu quan trọng:
+                - Không giải thích thêm.
+                - Không thêm text ngoài JSON.
+                """;
 
-        return List.of(new LLMMessage("system", prompt, null));
+        return List.of(
+                LLMMessage.systemMessage(prompt),
+                LLMMessage.userMessage(context.getLastUserReply(), null)
+        );
     }
 }
