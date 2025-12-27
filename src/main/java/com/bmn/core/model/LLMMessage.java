@@ -15,4 +15,9 @@ public record LLMMessage(String role, String content, ToolInfo toolInfo) impleme
     public static LLMMessage assistantMessage(String content, ToolInfo toolInfo) {
         return  new LLMMessage("assistant", content, toolInfo);
     }
+
+    public static LLMMessage toolMessage(String result, ToolInfo toolInfo) {
+        return  new LLMMessage("tool", result, toolInfo);
+    }
+
 }

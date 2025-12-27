@@ -17,12 +17,10 @@ public class Orchestrator {
     private final ContextLoader contextLoader;
     private final Map<Context.State, ExecuteNode> nodes;
     private final Map<Context.State, Function<Context, Context.State>> edges;
-    private final StateRouter router;
 
-    public Orchestrator(LLMClient llmClient, ContextLoader contextLoader, StateRouter stateRouter) {
+    public Orchestrator(LLMClient llmClient, ContextLoader contextLoader) {
         this.llmClient = llmClient;
         this.contextLoader = contextLoader;
-        this.router = stateRouter;
 
         this.nodes = new LinkedHashMap<>();
         this.edges = new LinkedHashMap<>();
@@ -33,10 +31,10 @@ public class Orchestrator {
 
     private void initNodes() {
         nodes.put(Context.State.INTENT_DETECT, new DetectIntentNode(llmClient));
-        nodes.put(Context.State.GREETING, new GreetingNode(llmClient));
         nodes.put(Context.State.RESPONDER, new ResponserNode(llmClient));
         nodes.put(Context.State.PLANNING, new PlanningNode(llmClient));
         nodes.put(Context.State.EXECUTE_STEP, new StepExecuteNode(llmClient));
+        nodes.put(Context.State.TOOL_CALL, new ToolExecuteNode());
     }
 
     private void initEdges() {
@@ -58,19 +56,28 @@ public class Orchestrator {
         });
         edges.put(Context.State.PLANNING, context -> Context.State.EXECUTE_STEP);
         edges.put(Context.State.EXECUTE_STEP, context -> {
+            if (!context.getToolsToExecute().isEmpty()) {
+                context.changeToToolCall(Context.State.EXECUTE_STEP);
+                return context.getState();
+            }
+
             TaskStep step = context.getPlan().get(context.getCurrentStepIndex());
             if ("ask_user".equals(step.getStatus())) {
                 context.pauseToAskUser(Context.State.EXECUTE_STEP);
                 return Context.State.PAUSE_ASK_USER;
             }
             if ("done".equals(step.getStatus())) {
-                context.setCurrentStepIndex(context.getCurrentStepIndex() + 1);
+                context.incrementStepIndex();
                 if (context.getCurrentStepIndex() == context.getPlan().size() - 1) {
                     return Context.State.DONE_GOAL;
                 }
             }
 
             return Context.State.EXECUTE_STEP;
+        });
+        edges.put(Context.State.TOOL_CALL, context -> {
+            context.resume();
+            return context.getState();
         });
     }
 

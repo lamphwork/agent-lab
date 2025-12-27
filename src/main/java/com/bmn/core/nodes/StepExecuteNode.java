@@ -21,80 +21,6 @@ public class StepExecuteNode extends AbstractLLMNode {
     }
 
     @Override
-    public Context execute(Context context, AgentCallback callback) {
-        TaskStep step = context.getPlan().get(context.getCurrentStepIndex());
-        callback.next(AgentOutput.hintMessage("Executing step: " + step.getTitle()));
-
-        String prompt = """
-                Bạn là một tác nhân THỰC THI (execution agent).
-                
-                Nhiệm vụ của bạn là thực hiện CHÍNH XÁC MỘT step hiện tại trong kế hoạch.
-                
-                Bạn PHẢI trả về KẾT QUẢ CUỐI CÙNG của step.
-                Không được trả về trạng thái "đang làm", "sẽ làm", hay "processing".
-                
-                Nếu step là thiết kế hoặc sinh code:
-                - Hãy sinh nội dung hoàn chỉnh
-                - Sau đó đánh dấu step là HOÀN THÀNH
-                
-                Bạn CHỈ được trả về MỘT trong các dạng sau (JSON):
-                
-                1. Step hoàn thành:
-                {
-                  "status": "done",
-                  "content": "Kết quả hoàn chỉnh của step"
-                }
-                
-                2. Cần hỏi người dùng:
-                {
-                  "status": "ask_user",
-                  "question": "Câu hỏi cụ thể",
-                  "required_fields": ["field1"]
-                }
-                
-                3. Step thất bại:
-                {
-                  "status": "failed",
-                  "error": "Mô tả lỗi rõ ràng"
-                }
-                
-                KHÔNG được trả về bất kỳ trạng thái nào khác.
-                
-                
-                """;
-
-        String contextPrompt = """
-                Kế hoạch (plan):
-                %s
-                
-                Step hiện tại:
-                %s
-                
-                """.formatted(context.getPlan(), step);
-
-
-        List<LLMMessage> messages = List.of(
-                LLMMessage.systemMessage(prompt),
-                LLMMessage.userMessage(contextPrompt, null)
-        );
-
-        List<LLMMessage> output = llm.generate(messages);
-        for (LLMMessage message : output) {
-            try {
-                JsonNode jsonNode = mapper.readTree(message.content());
-                String status = jsonNode.get("status").asText();
-                String content = jsonNode.get("content").asText();
-                step.setStatus(status);
-                callback.next(AgentOutput.textMessage(content));
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException("can not parse execute result", e);
-            }
-        }
-
-        return context;
-    }
-
-    @Override
     LLMMessage systemPrompt(Context context) {
         String prompt = """
                 Bạn là một tác nhân THỰC THI (execution agent).
@@ -119,14 +45,14 @@ public class StepExecuteNode extends AbstractLLMNode {
                 2. Cần hỏi người dùng:
                 {
                   "status": "ask_user",
-                  "question": "Câu hỏi cụ thể",
+                  "content": "Câu hỏi cụ thể",
                   "required_fields": ["field1"]
                 }
                 
                 3. Step thất bại:
                 {
                   "status": "failed",
-                  "error": "Mô tả lỗi rõ ràng"
+                  "content": "Mô tả lỗi rõ ràng"
                 }
                 
                 KHÔNG được trả về bất kỳ trạng thái nào khác.
@@ -152,7 +78,26 @@ public class StepExecuteNode extends AbstractLLMNode {
     }
 
     @Override
-    Context handleLLMResponse(List<LLMMessage> outputMessages) {
-        return null;
+    Context handleLLMResponse(Context context, AgentCallback callback, List<LLMMessage> outputMessages) {
+        TaskStep currentStep = context.getPlan().get(context.getCurrentStepIndex());
+
+        for (LLMMessage message : outputMessages) {
+            if (message.toolInfo() != null) {
+                context.getToolsToExecute().add(message.toolInfo());
+                continue;
+            }
+
+            try {
+                JsonNode jsonNode = mapper.readTree(message.content());
+                String status = jsonNode.get("status").asText();
+                String content = jsonNode.get("content").asText();
+                currentStep.setStatus(status);
+                callback.next(AgentOutput.textMessage(content));
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException("can not parse execute result", e);
+            }
+        }
+
+        return context;
     }
 }

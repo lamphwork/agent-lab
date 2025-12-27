@@ -1,6 +1,7 @@
 package com.bmn.core.model;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -8,6 +9,7 @@ import java.util.*;
 
 @Getter
 @Setter
+@Builder
 @AllArgsConstructor
 public class Context {
 
@@ -17,6 +19,7 @@ public class Context {
         RESPONDER,
         PLANNING,
         EXECUTE_STEP,
+        TOOL_CALL,
         PAUSE_ASK_USER,
         DONE_GOAL,
         USER_CANCELED
@@ -50,6 +53,10 @@ public class Context {
     // ===== Control =====
     private boolean userCanceled;
 
+    // ===== Execute tool ======
+    private List<ToolInfo> toolsToExecute;
+
+
     public boolean shouldRun() {
         return state != State.DONE_GOAL
                 && state != State.USER_CANCELED
@@ -65,26 +72,48 @@ public class Context {
         this.resumState = resumState;
     }
 
+    public void changeToToolCall(State resumState) {
+        this.state = State.TOOL_CALL;
+        this.resumState = resumState;
+    }
+
     public void putUserMessage(String userInput) {
         this.lastUserReply = userInput;
         this.histories.add(new LLMMessage("user", userInput, null));
     }
 
+    public void incrementStepIndex() {
+        currentStepIndex =  currentStepIndex + 1;
+    }
+
     public static Context newContext(String userInput) {
-        return new Context(
-                UUID.randomUUID().toString(),
-                State.INTENT_DETECT,
-                State.INTENT_DETECT,
-                new LinkedList<>(),
-                userInput,
-                userInput,
-                null,
-                new LinkedList<>(),
-                null,
-                new LinkedList<>(),
-                0,
-                new LinkedHashMap<>(),
-                false
-        );
+        return new ContextBuilder()
+                .id(UUID.randomUUID().toString())
+                .state(State.INTENT_DETECT)
+                .resumState(State.INTENT_DETECT)
+                .histories(new LinkedList<>())
+                .userInput(userInput)
+                .lastUserReply(userInput)
+                .intent(null)
+                .plan(new LinkedList<>())
+                .currentStepIndex(0)
+                .toolsToExecute(new LinkedList<>())
+                .build();
+//        return new Context(
+//                UUID.randomUUID().toString(),
+//                State.INTENT_DETECT,
+//                State.INTENT_DETECT,
+//                new LinkedList<>(),
+//                userInput,
+//                userInput,
+//                null,
+//                new LinkedList<>(),
+//                null,
+//                new LinkedList<>(),
+//                0,
+//                new LinkedHashMap<>(),
+//                false,
+//                null
+//        );
     }
 }

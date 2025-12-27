@@ -1,6 +1,5 @@
 package com.bmn.cli;
 
-import com.bmn.adapter.DefaultStateRouter;
 import com.bmn.adapter.InMemContextLoader;
 import com.bmn.adapter.OpenAI;
 import com.bmn.core.Orchestrator;
@@ -8,7 +7,6 @@ import com.bmn.core.model.Agent;
 import com.bmn.core.model.AgentInput;
 import com.bmn.core.port.ContextLoader;
 import com.bmn.core.port.LLMClient;
-import com.bmn.core.port.StateRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,9 +29,7 @@ public class CliApp {
 
         ContextLoader contextLoader = new InMemContextLoader();
 
-        StateRouter stateRouter = new DefaultStateRouter();
-
-        Orchestrator orchestrator = new Orchestrator(llm, contextLoader, stateRouter);
+        Orchestrator orchestrator = new Orchestrator(llm, contextLoader);
 
         Scanner scanner = new Scanner(System.in);
         String contextId = UUID.randomUUID().toString();

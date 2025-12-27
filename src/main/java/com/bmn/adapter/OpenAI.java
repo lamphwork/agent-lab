@@ -76,17 +76,16 @@ public class OpenAI implements LLMClient {
 
             request.set(
                     "tools",
-                    mapper.createArrayNode().addRawValue(new  RawValue(fakeTool))
+                    mapper.createArrayNode().add(mapper.readTree(fakeTool))
             );
 
             post.setEntity(
                     new StringEntity(mapper.writeValueAsString(request), StandardCharsets.UTF_8)
             );
 
-            JsonNode response = client.execute(post,
-                    httpResponse -> mapper.readTree(httpResponse.getEntity().getContent())
-            );
-            System.out.println(response.toString());
+            System.out.println(">>> " + mapper.writeValueAsString(request));
+            JsonNode response = client.execute(post, httpResponse -> mapper.readTree(httpResponse.getEntity().getContent()));
+            System.out.println("<<<" + response.toString());
 
             List<LLMMessage> result = new ArrayList<>();
             ArrayNode choices = (ArrayNode) response.get("choices");
@@ -109,7 +108,6 @@ public class OpenAI implements LLMClient {
                         );
                     }
                 }
-
                 result.add(new LLMMessage(role, content, toolInfo));
             }
 
@@ -139,9 +137,7 @@ public class OpenAI implements LLMClient {
                     new StringEntity(mapper.writeValueAsString(request), StandardCharsets.UTF_8)
             );
 
-            JsonNode response = client.execute(post,
-                    httpResponse -> mapper.readTree(httpResponse.getEntity().getContent())
-            );
+            JsonNode response = client.execute(post, httpResponse -> mapper.readTree(httpResponse.getEntity().getContent()));
 
             JsonNode embeddingNode =
                     response.at("/data/0/embedding");
@@ -170,14 +166,17 @@ public class OpenAI implements LLMClient {
                 ObjectNode toolInfoNode = mapper.createObjectNode();
                 toolInfoNode.put("id", message.toolInfo().id());
                 toolInfoNode.put("type", "function");
-                toolInfoNode.putIfAbsent(
+                toolInfoNode.set(
                         "function",
                         mapper.createObjectNode()
                                 .put("name", message.toolInfo().name())
-                                .putIfAbsent("arguments", message.toolInfo().args())
+                                .put("arguments", message.toolInfo().toString())
                 );
 
-                node.putIfAbsent("tool_calls", toolInfoNode);
+                if ("assistant".equals(message.role())) {
+                    node.set("tool_calls", mapper.createArrayNode().add(toolInfoNode));
+                }
+                node.put("tool_call_id", message.toolInfo().id());
             }
 
             arrayNode.add(node);
